@@ -29,6 +29,27 @@ Some prompts to answer:
 
 You can include a simple diagram or bullet list if helpful.
 
+From my understanding of how real world recommendation systems work, these systems utilize two large compenents to be able to recommend and predict what someone will like (in the instance, music).
+One component is collaborative filtering, this is where whatever platform builds a large matrix based on users and their songs (whatever is being recommended by the system). The matrix takes into account plays, skips, playlist adds and other metrics and compares them to how other people interact with the song as well. Based on how others interact with the song and how you interact with the song, the system can match other songs to you that the other users have interacted positively with (played the song fully, added to a playlist, etc.). The other component is content based filtering/analysis which is what this project will focus on. This aspect of a recommendation system recommends based on the song's content itself. A song has different metrics that can be used to score a song (such as danceability or energy). A user can have preferences on what they like in certain songs (in this case this is set explicitly but in larger systems this would be something that is accumulated based on what the user listens to) and the recommender will suggest sonsg that match or is close to those preferences.
+
+Song Object Features:
+- Mood
+- Energy
+- Valence
+- Genre
+- Danceability
+- Tempo
+- acousticness
+
+UserProfile Features:
+- favorite genere
+- favorite mood
+- target energy (since its explicitly stated in this simulation)
+- target valence (since its explicitly stated in this simulation)
+- target danceability (since its explicitly stated in this simulation)
+- target tempo bpm (since its explicitly stated in this simulation)
+- target acousticness (since its explicitly stated in this simulation)
+
 ---
 
 ## Getting Started

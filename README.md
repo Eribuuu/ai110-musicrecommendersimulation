@@ -50,6 +50,53 @@ UserProfile Features:
 - target tempo bpm (since its explicitly stated in this simulation)
 - target acousticness (since its explicitly stated in this simulation)
 
+### Algorithm Recipe
+
+**Scoring (one song vs. one user profile):**
+
+1. For each feature the user set a target for, compute a closeness from 0 to 1. Targets left as `None` are skipped.
+   - **Numeric features** (energy, valence, danceability, acousticness, tempo) use Gaussian closeness, `exp(-(gap)² / 2σ²)`. σ is 0.15 for the 0–1 features and 15 BPM for tempo, so a small gap costs little and a large gap costs a lot.
+   - **Genre** is the word overlap between the two genres, so "indie pop" vs "pop" scores 0.5.
+   - **Mood** scores 1.0 for an exact match, 0.5 if both moods are in the same mood family (e.g. {chill, relaxed, focused, peaceful}), and 0 otherwise.
+2. Combine the closeness values in a weighted average: `score = Σ(weight × closeness) / Σ(weights used)`. The weights are:
+
+   | Feature | Weight | Why |
+   |---|---|---|
+   | mood | 2.0 | strongest signal of what a listener wants |
+   | energy | 2.0 | main calm-vs-intense axis |
+   | valence | 2.0 | separates happy from dark songs at the same energy |
+   | genre | 1.0 | |
+   | danceability | 0.75 | partly tracks energy |
+   | tempo | 0.25 | mostly duplicates energy |
+   | acousticness | 0.25 | nearly the inverse of energy in this data |
+
+**Ranking (the whole list):**
+
+1. Drop songs the user has already heard.
+2. Drop songs below the minimum score (0 by default).
+3. Sort by score, highest first, breaking ties alphabetically by title.
+4. Allow at most 2 songs per artist.
+5. Return the top k, each with an explanation built from its per-feature closeness values.
+
+```
+songs.csv ─load_songs─▶ [Song × 20]
+                            │  + UserProfile + ScoringConfig
+                            ▼
+                     score each song ──▶ [ScoredSong × 20]
+                            ▼
+                     rank: exclude → threshold → sort → diversity → top k
+                            ▼
+                     explain ──▶ [(song, score, "because …") × k]
+```
+
+### Potential Biases
+
+- **Mood and energy outweigh genre.** Mood, energy and valence together carry about 70% of the weight, so a song in the user's favorite genre with the "wrong" mood can lose to a song from an unrelated genre. For example, a pop fan who wants happy music may see reggaeton ranked above an intense pop track.
+- **The mood families are hand-written opinions.** Which moods count as "related" reflects my judgment, not data, and a mood outside any family (e.g. romantic) never gets partial credit.
+- **Genres only match on shared words.** "rock" vs "metal" or "hip hop" vs "r&b" score 0, even though listeners often hear them as close.
+- **The catalog is small and uneven.** Most genres have a single song, so users with niche tastes get only one strong match and the rest of their list is filler.
+- **There is no exploration.** The system only recommends what is closest to the stated profile, so it can never surprise a user or help their taste grow (a filter bubble).
+
 ---
 
 ## Getting Started

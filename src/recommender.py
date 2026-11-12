@@ -39,8 +39,78 @@ class Recommender:
     OOP implementation of the recommendation logic.
     Required by tests/test_recommender.py
     """
+
+    # --- Scoring constants ---------------------------------------------------
+    # These describe how the system scores, not a song or a user.
+
+    # Mood, energy and valence are the strongest signals. Tempo and acousticness
+    # mostly duplicate energy in this dataset, so they stay low.
+    WEIGHTS = {
+        "mood": 2.0,
+        "energy": 2.0,
+        "valence": 2.0,
+        "genre": 1.0,
+        "danceability": 0.75,
+        "tempo": 0.25,
+        "acousticness": 0.25,
+    }
+
+    # Tolerance for Gaussian closeness: a gap of one sigma scores ~0.61, two
+    # sigmas ~0.14. Tempo's sigma is in BPM, so tempo needs no normalizing.
+    SIGMAS = {
+        "energy": 0.15,
+        "valence": 0.15,
+        "danceability": 0.15,
+        "acousticness": 0.15,
+        "tempo": 15.0,
+    }
+
+    # Moods in the same family earn partial credit instead of a hard 0.
+    MOOD_FAMILIES = [
+        {"chill", "relaxed", "focused", "peaceful"},
+        {"happy", "carefree", "euphoric", "energetic", "confident"},
+        {"intense", "angry"},
+        {"sad", "melancholic", "moody", "nostalgic"},
+        {"romantic"},
+    ]
+    SAME_FAMILY_CREDIT = 0.5
+
+    # feature name -> (UserProfile attribute, Song attribute)
+    NUMERIC_FEATURES = {
+        "energy": ("target_energy", "energy"),
+        "valence": ("target_valence", "valence"),
+        "danceability": ("target_danceability", "danceability"),
+        "tempo": ("target_tempo_bpm", "tempo_bpm"),
+        "acousticness": ("target_acousticness", "acousticness"),
+    }
+
     def __init__(self, songs: List[Song]):
         self.songs = songs
+
+    @staticmethod
+    def gaussian_closeness(value: float, target: float, sigma: float) -> float:
+        """1.0 at an exact match, falling off smoothly as the gap grows."""
+        return math.exp(-((value - target) ** 2) / (2 * sigma ** 2))
+
+    @staticmethod
+    def genre_closeness(song_genre: str, target: str) -> float:
+        """Word overlap (Jaccard), so 'indie pop' vs 'pop' earns 0.5."""
+        a = set(song_genre.lower().split())
+        b = set(target.lower().split())
+        if not a or not b:
+            return 0.0
+        return len(a & b) / len(a | b)
+
+    @classmethod
+    def mood_closeness(cls, song_mood: str, target: str) -> float:
+        """1.0 for the same mood, partial credit for the same mood family, else 0."""
+        song_mood, target = song_mood.lower(), target.lower()
+        if song_mood == target:
+            return 1.0
+        for family in cls.MOOD_FAMILIES:
+            if song_mood in family and target in family:
+                return cls.SAME_FAMILY_CREDIT
+        return 0.0
 
     def score(self, user: UserProfile, song: Song) -> Tuple[float, List[str]]:
         """
@@ -57,7 +127,7 @@ class Recommender:
 
         genre = user.favorite_genre
         if genre is not None:
-            c = genre_closeness(song.genre, genre)
+            c = self.genre_closeness(song.genre, genre)
             closeness["genre"] = c
             if c == 1.0:
                 phrases["genre"] = f"same genre ({song.genre})"
@@ -68,7 +138,7 @@ class Recommender:
 
         mood = user.favorite_mood
         if mood is not None:
-            c = mood_closeness(song.mood, mood)
+            c = self.mood_closeness(song.mood, mood)
             closeness["mood"] = c
             if c == 1.0:
                 phrases["mood"] = f"same mood ({song.mood})"
@@ -77,12 +147,12 @@ class Recommender:
             else:
                 phrases["mood"] = f"different mood ({song.mood})"
 
-        for name, (user_attr, song_attr) in NUMERIC_FEATURES.items():
+        for name, (user_attr, song_attr) in self.NUMERIC_FEATURES.items():
             target = getattr(user, user_attr)
             if target is None:
                 continue
             value = getattr(song, song_attr)
-            c = gaussian_closeness(value, target, SIGMAS[name])
+            c = self.gaussian_closeness(value, target, self.SIGMAS[name])
             closeness[name] = c
             gap = abs(value - target)
             gap_text = f"{gap:.0f} BPM" if name == "tempo" else f"{gap:.2f}"
@@ -91,10 +161,10 @@ class Recommender:
             else:
                 phrases[name] = f"{name} is {gap_text} off"
 
-        total_weight = sum(WEIGHTS[name] for name in closeness)
+        total_weight = sum(self.WEIGHTS[name] for name in closeness)
         if total_weight == 0:
             return 0.0, ["no preferences given"]
-        score = sum(WEIGHTS[name] * c for name, c in closeness.items()) / total_weight
+        score = sum(self.WEIGHTS[name] * c for name, c in closeness.items()) / total_weight
 
         reasons = [phrases[name] for name in sorted(closeness, key=lambda n: -closeness[n])]
         return score, reasons
@@ -133,72 +203,3 @@ def load_songs(csv_path: str) -> List[Song]:
                 acousticness=float(row["acousticness"]),
             ))
     return songs
-
-# --- Scoring constants -------------------------------------------------------
-# These describe how the system scores, not a song or a user.
-
-# Mood, energy and valence are the strongest signals. Tempo and acousticness
-# mostly duplicate energy in this dataset, so they stay low.
-WEIGHTS = {
-    "mood": 2.0,
-    "energy": 2.0,
-    "valence": 2.0,
-    "genre": 1.0,
-    "danceability": 0.75,
-    "tempo": 0.25,
-    "acousticness": 0.25,
-}
-
-# Tolerance for Gaussian closeness: a gap of one sigma scores ~0.61, two
-# sigmas ~0.14. Tempo's sigma is in BPM, so tempo needs no normalizing.
-SIGMAS = {
-    "energy": 0.15,
-    "valence": 0.15,
-    "danceability": 0.15,
-    "acousticness": 0.15,
-    "tempo": 15.0,
-}
-
-# Moods in the same family earn partial credit instead of a hard 0.
-MOOD_FAMILIES = [
-    {"chill", "relaxed", "focused", "peaceful"},
-    {"happy", "carefree", "euphoric", "energetic", "confident"},
-    {"intense", "angry"},
-    {"sad", "melancholic", "moody", "nostalgic"},
-    {"romantic"},
-]
-SAME_FAMILY_CREDIT = 0.5
-
-# feature name -> (UserProfile attribute, Song attribute)
-NUMERIC_FEATURES = {
-    "energy": ("target_energy", "energy"),
-    "valence": ("target_valence", "valence"),
-    "danceability": ("target_danceability", "danceability"),
-    "tempo": ("target_tempo_bpm", "tempo_bpm"),
-    "acousticness": ("target_acousticness", "acousticness"),
-}
-
-
-def gaussian_closeness(value: float, target: float, sigma: float) -> float:
-    """1.0 at an exact match, falling off smoothly as the gap grows."""
-    return math.exp(-((value - target) ** 2) / (2 * sigma ** 2))
-
-
-def genre_closeness(song_genre: str, target: str) -> float:
-    """Word overlap (Jaccard), so 'indie pop' vs 'pop' earns 0.5."""
-    a = set(song_genre.lower().split())
-    b = set(target.lower().split())
-    if not a or not b:
-        return 0.0
-    return len(a & b) / len(a | b)
-
-
-def mood_closeness(song_mood: str, target: str) -> float:
-    """1.0 for the same mood, partial credit for the same mood family, else 0."""
-    song_mood, target = song_mood.lower(), target.lower()
-    if song_mood == target:
-        return 1.0
-    for family in MOOD_FAMILIES:
-        if song_mood in family and target in family:
-            return SAME_FAMILY_CREDIT
-    return 0.0

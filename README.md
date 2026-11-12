@@ -139,13 +139,35 @@ You can add more tests in `tests/test_recommender.py`.
 Paste a sample of your recommender's output here as a text block so a reader can see what it produces:
 
 ```
-# e.g.:
-# User profile: genre=indie, mood=chill, energy=low
-# Recommendations:
-#   1. ...
-#   2. ...
-#   3. ...
+Loaded Songs: 20
+
+User profile:
+  favorite_genre: pop
+  favorite_mood: happy
+  target_energy: 0.8
+  target_valence: 0.8
+  target_danceability: 0.75
+  target_tempo_bpm: 120
+  target_acousticness: 0.2
+
+Top recommendations:
+
+Sunrise City - Score: 0.99
+Because: same genre (pop), same mood (happy), energy within 0.02 of target, tempo within 2 BPM of target, acousticness within 0.02 sof target, valence within 0.04 of target, danceability within 0.04 of target
+
+Rooftop Lights - Score: 0.91
+Because: same mood (happy), valence within 0.01 of target, tempo within 4 BPM of target, energy within 0.04 of target, danceability within 0.07 of target, acousticness within 0.15 of target, related genre (indie pop vs pop)
+
+Fuego Lento - Score: 0.68
+Because: valence within 0.01 of target, energy within 0.04 of target, acousticness within 0.05 of target, danceability is 0.17 off, similar mood (energetic ~ happy), tempo is 24 BPM off, different genre (reggaeton)
+
+Gym Hero - Score: 0.63
+Because: same genre (pop), valence within 0.03 of target, tempo within 12 BPM of target, energy within 0.13 of target, danceability within 0.13 of target, acousticness within 0.15 of target, different mood (intense)
+
+Concrete Crown - Score: 0.58
+Because: energy within 0.02 of target, acousticness within 0.08 of target, danceability within 0.11 of target, similar mood (confident ~ happy), valence is 0.18 off, tempo is 26 BPM off, different genre (hip hop)
 ```
+
 
 **Screenshot or video** *(optional)*: <!-- Insert a screenshot or demo video link here -->
 

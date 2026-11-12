@@ -8,6 +8,8 @@ The recommendation logic lives in recommender.py:
 - Recommender (score, recommend, explain_recommendation)
 """
 
+from dataclasses import asdict
+
 from recommender import UserProfile, Recommender, load_songs
 
 
@@ -28,6 +30,10 @@ def main() -> None:
     )
 
     recommender = Recommender(songs)
+
+    print("\nUser profile:")
+    for field, value in asdict(user).items():
+        print(f"  {field}: {value}")
 
     print("\nTop recommendations:\n")
     for song in recommender.recommend(user, k=5):

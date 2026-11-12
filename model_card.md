@@ -2,8 +2,7 @@
 
 ## 1. Model Name  
 
-Give your model a short, descriptive name.  
-Example: **VibeFinder 1.0**  
+**WaveSense 1.0** 
 
 ---
 
@@ -15,7 +14,9 @@ Prompts:
 
 - What kind of recommendations does it generate  
 - What assumptions does it make about the user  
-- Is this for real users or classroom exploration  
+- Is this for real users or classroom exploration 
+
+Currently this recommendation system is solely based on the contents of the songs ingested and recommends songs that fit closely to what parameters are defined by the user, these parameters are desired song metrics. The assumptions this recommender system takes about the user is that the user knows exactly what kind of songs they are looking for and what metrics that they are wanting in the songs (most users do not know what metrics are in songs and also would like to explore songs similar to their tastes, not exactly). This currently is not for real users based on how the system recommends songs and takes input to choose the songs to recommend, this is purely classroom exploration. To be used by actual users I would need to add a better way to set the intial values of the user profile that isn't direct numbers and values and maybe based on a song that they like already and extract values from that.
 
 ---
 

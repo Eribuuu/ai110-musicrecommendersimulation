@@ -85,6 +85,7 @@ class Recommender:
     }
 
     def __init__(self, songs: List[Song]):
+        """Stores the song catalog that recommendations are drawn from."""
         self.songs = songs
 
     @staticmethod

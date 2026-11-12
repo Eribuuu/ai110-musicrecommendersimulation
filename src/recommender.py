@@ -26,13 +26,13 @@ class UserProfile:
     Represents a user's taste preferences.
     Required by tests/test_recommender.py
     """
-    favorite_genre: str
-    favorite_mood: str
-    target_energy: float
-    target_valence: float
-    target_danceability: float
-    target_tempo_bpm: float
-    target_acousticness: float
+    favorite_genre: Optional[str]
+    favorite_mood: Optional[str]
+    target_energy: Optional[float]
+    target_valence: Optional[float]
+    target_danceability: Optional[float]
+    target_tempo_bpm: Optional[float]
+    target_acousticness: Optional[float]
 
 class Recommender:
     """
@@ -105,7 +105,7 @@ class Recommender:
     @classmethod
     def mood_closeness(cls, song_mood: str, target: str) -> float:
         """1.0 for the same mood, partial credit for the same mood family, else 0."""
-        song_mood, target = song_mood.lower(), target.lower()
+        song_mood, target = song_mood.strip().lower(), target.strip().lower()
         if song_mood == target:
             return 1.0
         for family in cls.MOOD_FAMILIES:

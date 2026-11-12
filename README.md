@@ -70,23 +70,26 @@ UserProfile Features:
    | tempo | 0.25 | mostly duplicates energy |
    | acousticness | 0.25 | nearly the inverse of energy in this data |
 
+3. If every target is `None`, there is nothing to compare, so every song scores 0.
+
 **Ranking (the whole list):**
 
-1. Drop songs the user has already heard.
-2. Drop songs below the minimum score (0 by default).
-3. Sort by score, highest first, breaking ties alphabetically by title.
-4. Allow at most 2 songs per artist.
-5. Return the top k, each with an explanation built from its per-feature closeness values.
+1. `Recommender.recommend(user, k)` scores every song in the catalog.
+2. Songs are sorted by score, highest first. Python's `sorted()` is stable, so songs with the same score keep their order from `songs.csv`.
+3. The top k songs are returned (k = 5 by default).
+4. `explain_recommendation` turns each song's per-feature closeness into a "Because: …" line, strongest match first. Numeric features within about one σ of the target read "within X of target"; the rest read "X off".
+
+All scoring settings (`WEIGHTS`, `SIGMAS`, `MOOD_FAMILIES`, `SAME_FAMILY_CREDIT`) are class constants on `Recommender` in `src/recommender.py`.
 
 ```
 songs.csv ─load_songs─▶ [Song × 20]
-                            │  + UserProfile + ScoringConfig
+                            │  + UserProfile
                             ▼
-                     score each song ──▶ [ScoredSong × 20]
+              Recommender.score(user, song) ──▶ (score, reasons) for each song
                             ▼
-                     rank: exclude → threshold → sort → diversity → top k
+              Recommender.recommend: sort by score → top k
                             ▼
-                     explain ──▶ [(song, score, "because …") × k]
+              explain_recommendation ──▶ "Because: …" for each song
 ```
 
 ### Potential Biases
@@ -119,8 +122,10 @@ pip install -r requirements.txt
 3. Run the app:
 
 ```bash
-python -m src.main
+python src/main.py
 ```
+
+This runs the three listener profiles defined in `PROFILES` in `src/main.py` and prints the top 5 songs for each.
 
 ### Running Tests
 
@@ -137,6 +142,8 @@ You can add more tests in `tests/test_recommender.py`.
 ## Sample Recommendation Output
 
 Paste a sample of your recommender's output here as a text block so a reader can see what it produces:
+
+This sample is from an earlier "happy pop" test profile. The current `src/main.py` prints the same format for each of its three profiles, under a `Profile: <name>` header (see the full output under Experiments).
 
 ```
 Loaded Songs: 20
@@ -181,7 +188,43 @@ Use this section to document the experiments you ran. For example:
 - What happened when you added tempo or valence to the score
 - How did your system behave for different types of users
 
-Here is the weigths being tested against each other, showing how each weight effects the scoring and which ones are more significant or matter compared to each other.
+### Experiment 1: Three listener profiles
+
+I ran three realistic profiles to see whether the recommendations made sense: **High-Energy Pop**, **Chill Lofi**, and **Deep Intense Rock**.
+
+- **Chill Lofi worked best.** All three lofi songs took the top three spots (0.99, 0.98, 0.87), followed by other calm, acoustic songs (ambient, jazz). Partial mood credit (focused ~ chill, relaxed ~ chill) did its job here.
+- **High-Energy Pop gave Gym Hero a perfect 1.00.** My target values ended up nearly identical to that one song, so the profile was really "find Gym Hero."
+- **Deep Intense Rock dropped off sharply after #1.** Storm Runner (0.96) is the only rock song in the catalog, so #2 fell to 0.56. Gym Hero (pop, intense) beat Iron Furnace (metal, angry) because an exact mood match is worth more than a similar mood, and "rock" vs "metal" earns no genre credit.
+- **The same songs crossed over.** Gym Hero and Storm Runner appeared for both intense profiles, because shared energy and mood outweigh different genres.
+
+### Experiment 2: Edge-case profiles
+
+I ran profiles built to break the scoring rather than model a real listener:
+
+| Profile | What it tested | What happened |
+|---|---|---|
+| Energetic but Sad (energy 0.9, mood sad) | Conflicting signals | Mood won: a slow blues song ranked #1 even though its energy was 0.44 off. |
+| Hyper Lofi (lofi, but energy 0.95 and 170 BPM) | Genre label vs. audio features | The genre and mood labels beat four badly mismatched features; the calm lofi songs still ranked above Storm Runner. |
+| Unknown Genre and Mood (k-pop, bittersweet) | Labels not in the catalog | Genre and mood scored 0 for every song, so scores topped out around 0.57. |
+| Out of Range Values (energy 1.5, tempo 300) | No input validation | No crash, but every score collapsed toward 0. Nothing warns the user. |
+| Messy Casing (`"  Pop "`, `" Happy "`) | Untidy input | **Found a bug:** genre matching ignored spaces but mood matching didn't, so " happy " didn't match "happy". Fixed by stripping whitespace in `mood_closeness`. |
+| No Preferences (everything `None`) | Empty profile | Every song scored 0, so the "recommendations" were just the first songs in the CSV. |
+
+### Experiment 3: Weight stress tests
+
+To see which of the current weights actually dominate, I built "tug of war" profiles. In each one, one song matches feature group A and a *different* song matches feature group B, and I compared their scores and overall ranks. The weights themselves were not changed.
+
+| Test | Side A | Side B | Winner |
+|---|---|---|---|
+| Genre (1.0) vs Mood (2.0) | Midnight Coding: 0.33, rank 3 | Storm Runner: 0.67, rank 1 | **Mood**, by exactly the 2:1 weight ratio |
+| Genre (1.0) vs Energy (2.0) | Nocturne in Grey: 0.33, rank 8 | Laser Cathedral: 0.66, rank 2 | **Energy** |
+| Mood (2.0) vs Energy (2.0) | Nocturne in Grey: 0.50, rank 1 | Laser Cathedral: 0.50, rank 3 | **Mood, barely.** An exact mood match scores exactly 0.50; a 0.02 energy gap scores about 0.496. |
+| Energy (2.0) vs danceability + tempo + acousticness (1.25) | Nocturne in Grey: 0.63, rank 1 | Fuego Lento: 0.38, rank 4 | **Energy**, even though Fuego Lento matched all three minor features exactly |
+| Mood + energy + valence (6.0) vs everything else (2.25) | Crossroads at Midnight: 0.73, rank 1 | Gym Hero: 0.27, rank 5 | **The big three**, by a wide margin |
+
+**Takeaway:** mood, energy and valence control the ranking. Genre and the three minor features act mostly as tie-breakers, and a single exact mood match can outweigh a song that fits everything else. Ties are broken by catalog order (Gym Hero and Laser Cathedral both scored exactly the same in the Mood vs Energy test, and Gym Hero ranked higher only because it comes first in the CSV).
+
+The full output from the three profiles and the weight stress tests is below. (The stress-test profiles have since been removed from `src/main.py`, so running it now prints only the first three profiles.)
 
 ```
 Loaded Songs: 20

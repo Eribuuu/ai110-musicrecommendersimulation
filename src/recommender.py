@@ -34,6 +34,13 @@ class UserProfile:
     target_tempo_bpm: Optional[float]
     target_acousticness: Optional[float]
 
+@dataclass
+class Recommendation:
+    """A recommended song with its score (0 to 1) and reasons, strongest first."""
+    song: Song
+    score: float
+    reasons: List[str]
+
 class Recommender:
     """
     OOP implementation of the recommendation logic.
@@ -113,67 +120,102 @@ class Recommender:
                 return cls.SAME_FAMILY_CREDIT
         return 0.0
 
+    def closeness(self, user: UserProfile, song: Song) -> Dict[str, float]:
+        """
+        Per-feature closeness (0 to 1) for every preference the user set.
+        Preferences that are None are left out entirely.
+        """
+        result: Dict[str, float] = {}
+        if user.favorite_genre is not None:
+            result["genre"] = self.genre_closeness(song.genre, user.favorite_genre)
+        if user.favorite_mood is not None:
+            result["mood"] = self.mood_closeness(song.mood, user.favorite_mood)
+        for name, (user_attr, song_attr) in self.NUMERIC_FEATURES.items():
+            target = getattr(user, user_attr)
+            if target is not None:
+                result[name] = self.gaussian_closeness(
+                    getattr(song, song_attr), target, self.SIGMAS[name]
+                )
+        return result
+
+    def weighted_score(self, closeness: Dict[str, float]) -> float:
+        """
+        Weighted average of the closeness values. Skipped preferences are left
+        out of both the numerator and the denominator, so the score always
+        stays between 0 and 1. No preferences at all scores 0.
+        """
+        total_weight = sum(self.WEIGHTS[name] for name in closeness)
+        if total_weight == 0:
+            return 0.0
+        return sum(self.WEIGHTS[name] * c for name, c in closeness.items()) / total_weight
+
+    def reasons(self, user: UserProfile, song: Song, closeness: Dict[str, float]) -> List[str]:
+        """Human-readable reason for each scored feature, strongest match first."""
+        if not closeness:
+            return ["no preferences given"]
+
+        phrases: Dict[str, str] = {}
+        for name, c in closeness.items():
+            if name == "genre":
+                if c == 1.0:
+                    phrases[name] = f"same genre ({song.genre})"
+                elif c > 0:
+                    phrases[name] = f"related genre ({song.genre} vs {user.favorite_genre})"
+                else:
+                    phrases[name] = f"different genre ({song.genre})"
+            elif name == "mood":
+                if c == 1.0:
+                    phrases[name] = f"same mood ({song.mood})"
+                elif c > 0:
+                    phrases[name] = f"similar mood ({song.mood} ~ {user.favorite_mood})"
+                else:
+                    phrases[name] = f"different mood ({song.mood})"
+            else:
+                user_attr, song_attr = self.NUMERIC_FEATURES[name]
+                gap = abs(getattr(song, song_attr) - getattr(user, user_attr))
+                gap_text = f"{gap:.0f} BPM" if name == "tempo" else f"{gap:.2f}"
+                if c >= 0.6:  # within about one sigma
+                    phrases[name] = f"{name} within {gap_text} of target"
+                else:
+                    phrases[name] = f"{name} is {gap_text} off"
+
+        return [phrases[name] for name in sorted(closeness, key=lambda n: -closeness[n])]
+
     def score(self, user: UserProfile, song: Song) -> Tuple[float, List[str]]:
         """
         Scores a single song against the user's preferences.
 
-        Any preference that is None is skipped in both the numerator and the
-        denominator of the weighted average, so the score always stays
-        between 0 and 1.
-
         Returns (score, reasons), with reasons ordered strongest match first.
         """
-        closeness: Dict[str, float] = {}
-        phrases: Dict[str, str] = {}
+        c = self.closeness(user, song)
+        return self.weighted_score(c), self.reasons(user, song, c)
 
-        genre = user.favorite_genre
-        if genre is not None:
-            c = self.genre_closeness(song.genre, genre)
-            closeness["genre"] = c
-            if c == 1.0:
-                phrases["genre"] = f"same genre ({song.genre})"
-            elif c > 0:
-                phrases["genre"] = f"related genre ({song.genre} vs {genre})"
-            else:
-                phrases["genre"] = f"different genre ({song.genre})"
+    def recommend_with_details(
+        self, user: UserProfile, k: int = 5, min_score: float = 0.0
+    ) -> List[Recommendation]:
+        """
+        Top k songs with their score and reasons, highest score first.
 
-        mood = user.favorite_mood
-        if mood is not None:
-            c = self.mood_closeness(song.mood, mood)
-            closeness["mood"] = c
-            if c == 1.0:
-                phrases["mood"] = f"same mood ({song.mood})"
-            elif c > 0:
-                phrases["mood"] = f"similar mood ({song.mood} ~ {mood})"
-            else:
-                phrases["mood"] = f"different mood ({song.mood})"
+        Songs scoring below min_score are dropped, so fewer than k (or zero)
+        results means nothing else in the catalog is a good enough match.
+        Each song is scored once; reason text is only built for the songs
+        that are returned. sorted() is stable, so ties keep catalog order.
+        """
+        scored = []
+        for song in self.songs:
+            c = self.closeness(user, song)
+            s = self.weighted_score(c)
+            if s >= min_score:
+                scored.append((s, song, c))
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [
+            Recommendation(song=song, score=s, reasons=self.reasons(user, song, c))
+            for s, song, c in scored[:k]
+        ]
 
-        for name, (user_attr, song_attr) in self.NUMERIC_FEATURES.items():
-            target = getattr(user, user_attr)
-            if target is None:
-                continue
-            value = getattr(song, song_attr)
-            c = self.gaussian_closeness(value, target, self.SIGMAS[name])
-            closeness[name] = c
-            gap = abs(value - target)
-            gap_text = f"{gap:.0f} BPM" if name == "tempo" else f"{gap:.2f}"
-            if c >= 0.6:  # within about one sigma
-                phrases[name] = f"{name} within {gap_text} of target"
-            else:
-                phrases[name] = f"{name} is {gap_text} off"
-
-        total_weight = sum(self.WEIGHTS[name] for name in closeness)
-        if total_weight == 0:
-            return 0.0, ["no preferences given"]
-        score = sum(self.WEIGHTS[name] * c for name, c in closeness.items()) / total_weight
-
-        reasons = [phrases[name] for name in sorted(closeness, key=lambda n: -closeness[n])]
-        return score, reasons
-
-    def recommend(self, user: UserProfile, k: int = 5) -> List[Song]:
-        """Top k songs, highest score first. sorted() is stable, so ties keep catalog order."""
-        ranked = sorted(self.songs, key=lambda song: self.score(user, song)[0], reverse=True)
-        return ranked[:k]
+    def recommend(self, user: UserProfile, k: int = 5, min_score: float = 0.0) -> List[Song]:
+        """Top k songs, highest score first. See recommend_with_details."""
+        return [r.song for r in self.recommend_with_details(user, k, min_score)]
 
     def explain_recommendation(self, user: UserProfile, song: Song) -> str:
         """Why the song scored as it did, strongest match first."""

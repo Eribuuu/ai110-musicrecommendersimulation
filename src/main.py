@@ -51,6 +51,10 @@ PROFILES = {
 }
 
 
+# Songs scoring below this are treated as "not a good match" and are not shown.
+MIN_SCORE = 0.5
+
+
 def print_recommendations(recommender: Recommender, name: str, user: UserProfile, k: int = 5) -> None:
     print("=" * 60)
     print(f"Profile: {name}")
@@ -58,12 +62,18 @@ def print_recommendations(recommender: Recommender, name: str, user: UserProfile
     for field, value in asdict(user).items():
         print(f"  {field}: {value}")
 
+    results = recommender.recommend_with_details(user, k=k, min_score=MIN_SCORE)
+
     print("\nTop recommendations:\n")
-    for song in recommender.recommend(user, k=k):
-        score, _ = recommender.score(user, song)
-        print(f"{song.title} - Score: {score:.2f}")
-        print(f"Because: {recommender.explain_recommendation(user, song)}")
+    if not results:
+        print(f"No songs scored at least {MIN_SCORE:.2f}; nothing in the catalog is a good match.\n")
+        return
+    for rec in results:
+        print(f"{rec.song.title} - Score: {rec.score:.2f}")
+        print(f"Because: {', '.join(rec.reasons)}")
         print()
+    if len(results) < k:
+        print(f"(Only {len(results)} of {k} songs scored at least {MIN_SCORE:.2f}.)\n")
 
 
 def main() -> None:

@@ -65,3 +65,50 @@ def test_explain_recommendation_returns_non_empty_string():
     explanation = rec.explain_recommendation(user, song)
     assert isinstance(explanation, str)
     assert explanation.strip() != ""
+
+
+POP_USER = UserProfile(
+    favorite_genre="pop",
+    favorite_mood="happy",
+    target_energy=0.8,
+    target_valence=0.9,
+    target_danceability=0.8,
+    target_tempo_bpm=120,
+    target_acousticness=0.2,
+)
+
+
+def test_recommend_with_details_matches_score():
+    rec = make_small_recommender()
+    results = rec.recommend_with_details(POP_USER, k=2)
+
+    assert [r.song for r in results] == rec.recommend(POP_USER, k=2)
+    for r in results:
+        score, reasons = rec.score(POP_USER, r.song)
+        assert r.score == score
+        assert r.reasons == reasons
+    assert results[0].score >= results[1].score
+
+
+def test_min_score_drops_weak_matches():
+    rec = make_small_recommender()
+    results = rec.recommend_with_details(POP_USER, k=2, min_score=0.5)
+
+    # The exact pop match passes; the lofi song is far off on every feature.
+    assert len(results) == 1
+    assert results[0].song.genre == "pop"
+
+
+def test_min_score_can_return_nothing():
+    rec = make_small_recommender()
+    assert rec.recommend_with_details(POP_USER, k=2, min_score=1.01) == []
+
+
+def test_no_preferences_scores_zero():
+    rec = make_small_recommender()
+    empty = UserProfile(None, None, None, None, None, None, None)
+    score, reasons = rec.score(empty, rec.songs[0])
+
+    assert score == 0.0
+    assert reasons == ["no preferences given"]
+    assert rec.recommend_with_details(empty, k=2, min_score=0.1) == []

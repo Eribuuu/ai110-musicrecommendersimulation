@@ -23,7 +23,6 @@ from recommender import UserProfile, Recommender, load_songs
 PROFILES = {
     "High-Energy Pop": UserProfile(
         favorite_genre="pop",
-        favorite_mood="intense",
         target_energy=0.92,
         target_valence=0.75,
         target_danceability=0.88,
@@ -32,7 +31,6 @@ PROFILES = {
     ),
     "Chill Lofi": UserProfile(
         favorite_genre="lofi",
-        favorite_mood="chill",
         target_energy=0.38,
         target_valence=0.58,
         target_danceability=0.60,
@@ -41,7 +39,6 @@ PROFILES = {
     ),
     "Deep Intense Rock": UserProfile(
         favorite_genre="rock",
-        favorite_mood="intense",
         target_energy=0.92,
         target_valence=0.40,
         target_danceability=0.60,
